@@ -1,0 +1,35 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    name: Build (Windows MSVC)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    - name: Configure CMake
+      # -B build: 指定构建目录为 build
+      # -S .: 指定源码目录为当前目录
+      # -DCMAKE_BUILD_TYPE=Release: 配置为发布模式
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build Project
+      # --config Release: 确保 MSVC 使用 Release 配置进行编译
+      run: cmake --build build --config Release
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ShutdownTray-Executable
+        # MSVC 默认会将 Release 版本的 exe 放在 build/Release 目录下
+        path: build/Release/ShutdownTray.exe
+        if-no-files-found: error
