@@ -1,6 +1,39 @@
 #include "../include/gui.h"
 #include "../include/config.h"
 #include "../include/system_ops.h"
+#include <commctrl.h> // 为了更好的控件样式（可选）
+
+// 全局字体句柄，用于在程序退出时销毁
+static HFONT g_hAppFont = NULL;
+
+// --- 辅助函数：遍历并设置子控件字体 ---
+static BOOL CALLBACK EnumChildProc(HWND hwndChild, LPARAM lParam) {
+    SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, MAKELPARAM(TRUE, 0));
+    return TRUE;
+}
+
+// --- 核心修复：创建并应用系统默认字体 ---
+void SetSystemFont(HWND hwndParent) {
+    if (g_hAppFont == NULL) {
+        // 获取系统非客户区度量信息（包含消息框字体，即系统默认UI字体）
+        NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
+        
+        // 兼容性处理：如果编译时定义了 Vista 之后的结构体大小，但在 XP 运行，需要调整大小
+        // 这里直接使用当前结构体大小，通常没问题
+        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
+            g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
+        } else {
+            // 如果获取失败，回退到默认 GUI 字体（虽然较丑，但总比没有好）
+            g_hAppFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+        }
+    }
+
+    // 将字体应用到主窗口（虽然主窗口通常没有文字直接显示在客户区，但作为父句柄是个好习惯）
+    SendMessage(hwndParent, WM_SETFONT, (WPARAM)g_hAppFont, MAKELPARAM(TRUE, 0));
+
+    // 关键：枚举所有子控件（按钮、输入框、标签）并设置字体
+    EnumChildWindows(hwndParent, EnumChildProc, (LPARAM)g_hAppFont);
+}
 
 // --- GUI Functions ---
 void ApplyConfigToGUI() {
@@ -11,7 +44,7 @@ void ApplyConfigToGUI() {
     SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_IDLE_SHUTDOWN), BM_SETCHECK, g_config.enable_idle_shutdown ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_HIDE_MAIN_WINDOW), BM_SETCHECK, g_config.hide_main_window ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    WCHAR szTime[5];
+    WCHAR szTime[16];
     swprintf_s(szTime, ARRAYSIZE(szTime), L"%02d", g_config.shutdown_hour);
     SetDlgItemTextW(g_hMainWindow, IDC_EDIT_SHUTDOWN_HOUR, szTime);
     swprintf_s(szTime, ARRAYSIZE(szTime), L"%02d", g_config.shutdown_minute);
@@ -31,7 +64,7 @@ void GetConfigFromGUI() {
     g_config.enable_idle_shutdown = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_IDLE_SHUTDOWN), BM_GETCHECK, 0, 0) == BST_CHECKED);
     g_config.hide_main_window = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_HIDE_MAIN_WINDOW), BM_GETCHECK, 0, 0) == BST_CHECKED);
 
-    WCHAR szTime[5];
+    WCHAR szTime[16];
     GetDlgItemTextW(g_hMainWindow, IDC_EDIT_SHUTDOWN_HOUR, szTime, ARRAYSIZE(szTime));
     g_config.shutdown_hour = _wtoi(szTime);
     GetDlgItemTextW(g_hMainWindow, IDC_EDIT_SHUTDOWN_MINUTE, szTime, ARRAYSIZE(szTime));
@@ -48,41 +81,47 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CREATE: {
             g_hMainWindow = hWnd;
             int yPos = 20;
-            const int lineSpacing = 28;
+            const int lineSpacing = 35; // 稍微增加行距以适应更清晰的字体
             const int labelWidth = 120;
             const int checkboxColX = 145;
             const int editWidthSmall = 35;
             const int editWidthLarge = 60;
-            const int buttonWidth = 75;
-            const int buttonHeight = 25;
+            const int buttonWidth = 80; // 稍微加宽按钮
+            const int buttonHeight = 28;
             const int buttonHorizontalSpacing = 8;
 
-            CreateWindowW(L"STATIC", L"开机启动:", WS_VISIBLE | WS_CHILD, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 20, 20, hWnd, (HMENU)IDC_CHK_AUTORUN, NULL, NULL);
+            // 1. 开机启动
+            CreateWindowW(L"STATIC", L"开机启动:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"启用", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 60, 20, hWnd, (HMENU)IDC_CHK_AUTORUN, NULL, NULL);
             yPos += lineSpacing;
 
-            CreateWindowW(L"STATIC", L"定时关机:", WS_VISIBLE | WS_CHILD, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 20, 20, hWnd, (HMENU)IDC_CHK_TIMED_SHUTDOWN, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER, checkboxColX + 30, yPos, editWidthSmall, 20, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_HOUR, NULL, NULL);
-            CreateWindowW(L"STATIC", L":", WS_VISIBLE | WS_CHILD, checkboxColX + 70, yPos, 10, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER, checkboxColX + 85, yPos, editWidthSmall, 20, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_MINUTE, NULL, NULL);
+            // 2. 定时关机
+            CreateWindowW(L"STATIC", L"定时关机:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"启用", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 60, 20, hWnd, (HMENU)IDC_CHK_TIMED_SHUTDOWN, NULL, NULL);
+            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_HOUR, NULL, NULL);
+            CreateWindowW(L"STATIC", L":", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_CENTER, checkboxColX + 100, yPos, 10, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 115, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_MINUTE, NULL, NULL);
             yPos += lineSpacing;
 
-            CreateWindowW(L"STATIC", L"闲置关机:", WS_VISIBLE | WS_CHILD, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 20, 20, hWnd, (HMENU)IDC_CHK_IDLE_SHUTDOWN, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER, checkboxColX + 30, yPos, editWidthLarge, 20, hWnd, (HMENU)IDC_EDIT_IDLE_MINUTES, NULL, NULL);
-            CreateWindowW(L"STATIC", L"分钟", WS_VISIBLE | WS_CHILD, checkboxColX + 95, yPos, 40, 20, hWnd, NULL, NULL, NULL);
+            // 3. 闲置关机
+            CreateWindowW(L"STATIC", L"闲置关机:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"启用", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 60, 20, hWnd, (HMENU)IDC_CHK_IDLE_SHUTDOWN, NULL, NULL);
+            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_IDLE_MINUTES, NULL, NULL);
+            CreateWindowW(L"STATIC", L"分钟", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, checkboxColX + 130, yPos, 40, 20, hWnd, NULL, NULL, NULL);
             yPos += lineSpacing;
 
-            CreateWindowW(L"STATIC", L"关机倒计时:", WS_VISIBLE | WS_CHILD, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER, checkboxColX, yPos, editWidthLarge, 20, hWnd, (HMENU)IDC_EDIT_COUNTDOWN_SECONDS, NULL, NULL);
-            CreateWindowW(L"STATIC", L"秒", WS_VISIBLE | WS_CHILD, checkboxColX + 65, yPos, 40, 20, hWnd, NULL, NULL, NULL);
+            // 4. 倒计时
+            CreateWindowW(L"STATIC", L"关机倒计时:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_COUNTDOWN_SECONDS, NULL, NULL);
+            CreateWindowW(L"STATIC", L"秒", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, checkboxColX + 65, yPos, 40, 20, hWnd, NULL, NULL, NULL);
             yPos += lineSpacing;
 
-            CreateWindowW(L"STATIC", L"下次启动隐藏界面:", WS_VISIBLE | WS_CHILD, 20, yPos, labelWidth + 30, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"BUTTON", L"", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX + 30, yPos, 20, 20, hWnd, (HMENU)IDC_CHK_HIDE_MAIN_WINDOW, NULL, NULL);
+            // 5. 隐藏界面
+            CreateWindowW(L"STATIC", L"启动时隐藏界面:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"是", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 50, 20, hWnd, (HMENU)IDC_CHK_HIDE_MAIN_WINDOW, NULL, NULL);
             yPos += lineSpacing + 15;
 
+            // 6. 按钮区域
             RECT clientRect;
             GetClientRect(hWnd, &clientRect);
             int windowWidth = clientRect.right - clientRect.left;
@@ -93,9 +132,12 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             btnX += buttonWidth + buttonHorizontalSpacing;
             CreateWindowW(L"BUTTON", L"立即关机", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_SHUTDOWN_NOW, NULL, NULL);
             btnX += buttonWidth + buttonHorizontalSpacing;
-            CreateWindowW(L"BUTTON", L"隐藏程序", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_HIDE_PROGRAM, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"隐藏后台", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_HIDE_PROGRAM, NULL, NULL);
             btnX += buttonWidth + buttonHorizontalSpacing;
             CreateWindowW(L"BUTTON", L"退出程序", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_EXIT_APP, NULL, NULL);
+
+            // --- 核心修复：应用系统字体 ---
+            SetSystemFont(hWnd);
             break;
         }
 
@@ -118,7 +160,6 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                         long time_diff_seconds_on_save = current_total_seconds_on_save - scheduled_total_seconds_on_save;
 
                         if (time_diff_seconds_on_save >= 0 && time_diff_seconds_on_save <= 60) {
-                            // Updated Call
                             StartShutdownProcess(g_config.countdown_seconds);
                             g_shutdown_executed_today = TRUE; 
                             immediate_shutdown_triggered_on_save = TRUE;
@@ -130,14 +171,13 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     }
                     break;
                 case IDC_BTN_SHUTDOWN_NOW:
-                    // Updated Call
                     StartShutdownProcess(g_config.countdown_seconds);
                     break;
                 case IDC_BTN_HIDE_PROGRAM:
                     ShowWindow(hWnd, SW_HIDE);
                     break;
                 case IDC_BTN_EXIT_APP:
-                    DestroyWindow(g_hHiddenWindow);
+                    DestroyWindow(g_hHiddenWindow); // 触发 HiddenWindow 的 WM_DESTROY，进而 PostQuitMessage
                     break;
             }
             break;
@@ -148,85 +188,11 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             break;
 
         case WM_DESTROY:
-            break;
-    }
-    return DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-// --- Hidden Window Procedure ---
-LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-        case WM_CREATE:
-            g_hHiddenWindow = hWnd;
-            break;
-
-        case WM_TIMER:
-            if (LOWORD(wParam) == IDT_TIMER_CHECK_IDLE) {
-                if (g_config.enable_idle_shutdown && !g_is_shutdown_pending) {
-                    DWORD idle_time_ms = GetIdleTime();
-                    DWORD configured_idle_time_ms = (DWORD)g_config.idle_minutes * 60 * 1000;
-                    if (configured_idle_time_ms > 0 && idle_time_ms >= configured_idle_time_ms) {
-                        // Updated Call
-                        StartShutdownProcess(g_config.countdown_seconds);
-                    }
-                }
-            } else if (LOWORD(wParam) == IDT_TIMER_CHECK_TIMED_SHUTDOWN) {
-                SYSTEMTIME st;
-                GetLocalTime(&st);
-
-                // Check date change
-                if (g_last_handled_day_for_timed_shutdown == 0) {
-                    g_last_handled_day_for_timed_shutdown = st.wDay;
-                }
-                if (st.wDay != g_last_handled_day_for_timed_shutdown) {
-                    g_shutdown_executed_today = FALSE;
-                    g_last_handled_day_for_timed_shutdown = st.wDay;
-                }
-
-                // Check timed shutdown
-                if (g_config.enable_timed_shutdown && !g_shutdown_executed_today && !g_is_shutdown_pending) {
-                    long current_total_seconds = st.wHour * 3600 + st.wMinute * 60 + st.wSecond;
-                    long scheduled_total_seconds = g_config.shutdown_hour * 3600 + g_config.shutdown_minute * 60;
-                    long time_diff_seconds = current_total_seconds - scheduled_total_seconds;
-
-                    if (time_diff_seconds >= 0 && time_diff_seconds <= 60) {
-                        // Updated Call
-                        StartShutdownProcess(g_config.countdown_seconds);
-                        g_shutdown_executed_today = TRUE;
-                    }
-                }
-            } else if (LOWORD(wParam) == IDT_TIMER_SHUTDOWN_COUNTDOWN) {
-                KillTimer(hWnd, IDT_TIMER_SHUTDOWN_COUNTDOWN);
-                g_is_shutdown_pending = FALSE;
-
-                STARTUPINFOW si = { sizeof(si) };
-                PROCESS_INFORMATION pi = {0};
-                si.dwFlags = STARTF_USESHOWWINDOW;
-                si.wShowWindow = SW_HIDE;
-                WCHAR cmdLine[] = L"shutdown.exe -s -t 0";
-                if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-                                   CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-                } else {
-                    MessageBoxW(NULL, L"执行关机命令失败！请检查权限。", L"关机错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
-                }
-                PostQuitMessage(0);
+            // --- 核心修复：清理字体对象 ---
+            if (g_hAppFont) {
+                DeleteObject(g_hAppFont);
+                g_hAppFont = NULL;
             }
-            break;
-
-        case WM_ENDSESSION:
-            if (wParam == TRUE) {
-                KillTimer(hWnd, IDT_TIMER_CHECK_IDLE);
-                KillTimer(hWnd, IDT_TIMER_CHECK_TIMED_SHUTDOWN);
-                KillTimer(hWnd, IDT_TIMER_SHUTDOWN_COUNTDOWN);
-                g_is_shutdown_pending = FALSE;
-            }
-            return 0;
-        case WM_QUERYENDSESSION:
-            return TRUE;
-        case WM_DESTROY:
-            PostQuitMessage(0);
             break;
     }
     return DefWindowProcW(hWnd, msg, wParam, lParam);
