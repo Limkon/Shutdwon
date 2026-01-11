@@ -16,11 +16,13 @@ set(SOURCES
     src/system_ops.c
 )
 
-# 资源文件 (如果有 .rc 文件，可以在此添加)
-# set(RESOURCES resources/resource.rc)
+# --- 修改开始: 启用资源文件 ---
+# 设置资源文件路径
+set(RESOURCES resources/resource.rc)
 
-# 生成可执行文件 (Windows 窗口应用，不带控制台)
+# 生成可执行文件 (将 ${RESOURCES} 添加到列表中)
 add_executable(ShutdownTray WIN32 ${SOURCES} ${RESOURCES})
+# --- 修改结束 ---
 
 # 链接库
 target_link_libraries(ShutdownTray User32 Kernel32 Advapi32 Shell32 Gdi32)
