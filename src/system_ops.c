@@ -1,4 +1,5 @@
 #include "../include/system_ops.h"
+#include <stdio.h>
 
 // GetLastInputInfo Function Pointer and Module Handle (Internal to this file)
 typedef BOOL (WINAPI *PFN_GetLastInputInfo)(LPLASTINPUTINFO);
@@ -41,7 +42,8 @@ void SetAutorun(BOOL enable) {
 }
 
 // --- Shutdown Functions ---
-void InitiateShutdown(UINT countdown) {
+// 重命名为 StartShutdownProcess 以解决冲突
+void StartShutdownProcess(UINT countdown) {
     if (g_is_shutdown_pending) {
         return;
     }
