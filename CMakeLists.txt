@@ -3,9 +3,10 @@ project(ShutdownAssistant C)
 
 set(CMAKE_C_STANDARD 99)
 
-# --- 核心修复：添加 /utf-8 选项以支持 UTF-8 源码中的中文 ---
 if(MSVC)
+    # 核心修复：同时包含 /utf-8 (防乱码) 和 UNICODE 定义 (防类型错误)
     add_compile_options("/utf-8")
+    add_compile_definitions(UNICODE _UNICODE)
 endif()
 
 # 包含目录
