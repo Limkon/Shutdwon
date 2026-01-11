@@ -116,7 +116,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
     g_hMainWindow = CreateWindowExW(
         0, MAIN_WINDOW_CLASS, L"定时闲置关机助手",
         WS_OVERLAPPEDWINDOW | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 430, 250,
+        CW_USEDEFAULT, CW_USEDEFAULT, 430, 320, // 已修改：高度从 250 增加到 320，确保按钮可见
         NULL, NULL, hInstance, NULL);
 
     if (!g_hMainWindow) {
