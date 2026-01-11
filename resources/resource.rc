@@ -1,0 +1,40 @@
+// resources/resource.rc
+#include <windows.h>
+#include "../include/resource.h" // 引用头文件以获取 IDI_APPICON 的定义 (101)
+
+// --- 图标定义 ---
+// 语法: [ID] ICON [文件名]
+// 注意: "app.ico" 必须位于与本 .rc 文件相同的目录 (resources/) 中
+IDI_APPICON ICON "app.ico"
+
+// --- 版本信息 (可选) ---
+// 如果您希望文件属性中显示版本号，可以取消注释以下部分
+/*
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0" // 中文 (简体)
+        BEGIN
+            VALUE "CompanyName",      "MyCompany"
+            VALUE "FileDescription",  "定时闲置关机助手"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "ShutdownTray"
+            VALUE "OriginalFilename", "ShutdownTray.exe"
+            VALUE "ProductName",      "Shutdown Assistant"
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+*/
