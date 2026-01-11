@@ -5,7 +5,8 @@
 
 BOOL IsAutorunEnabled();
 void SetAutorun(BOOL enable);
-void InitiateShutdown(UINT countdown);
+// 重命名以避免与 Windows API InitiateShutdown 冲突
+void StartShutdownProcess(UINT countdown);
 void StopShutdownCountdown();
 void SetShutdownTimers();
 DWORD GetIdleTime();
