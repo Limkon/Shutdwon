@@ -118,7 +118,8 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                         long time_diff_seconds_on_save = current_total_seconds_on_save - scheduled_total_seconds_on_save;
 
                         if (time_diff_seconds_on_save >= 0 && time_diff_seconds_on_save <= 60) {
-                            InitiateShutdown(g_config.countdown_seconds);
+                            // Updated Call
+                            StartShutdownProcess(g_config.countdown_seconds);
                             g_shutdown_executed_today = TRUE; 
                             immediate_shutdown_triggered_on_save = TRUE;
                         }
@@ -129,7 +130,8 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     }
                     break;
                 case IDC_BTN_SHUTDOWN_NOW:
-                    InitiateShutdown(g_config.countdown_seconds);
+                    // Updated Call
+                    StartShutdownProcess(g_config.countdown_seconds);
                     break;
                 case IDC_BTN_HIDE_PROGRAM:
                     ShowWindow(hWnd, SW_HIDE);
@@ -164,7 +166,8 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     DWORD idle_time_ms = GetIdleTime();
                     DWORD configured_idle_time_ms = (DWORD)g_config.idle_minutes * 60 * 1000;
                     if (configured_idle_time_ms > 0 && idle_time_ms >= configured_idle_time_ms) {
-                        InitiateShutdown(g_config.countdown_seconds);
+                        // Updated Call
+                        StartShutdownProcess(g_config.countdown_seconds);
                     }
                 }
             } else if (LOWORD(wParam) == IDT_TIMER_CHECK_TIMED_SHUTDOWN) {
@@ -187,7 +190,8 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     long time_diff_seconds = current_total_seconds - scheduled_total_seconds;
 
                     if (time_diff_seconds >= 0 && time_diff_seconds <= 60) {
-                        InitiateShutdown(g_config.countdown_seconds);
+                        // Updated Call
+                        StartShutdownProcess(g_config.countdown_seconds);
                         g_shutdown_executed_today = TRUE;
                     }
                 }
