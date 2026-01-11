@@ -2,8 +2,8 @@
 #define COMMON_H
 
 #define _WIN32_WINNT 0x0501 // For Windows XP compatibility
-#define UNICODE
-#define _UNICODE
+// 移除 UNICODE 和 _UNICODE 定义，因为 CMake 已经在编译器参数中定义了它们
+// 避免 warning C4005: macro redefinition
 
 #include <windows.h>
 #include <stdio.h>
@@ -41,7 +41,7 @@ extern HWND g_hHiddenWindow;
 extern HANDLE g_hMutex;
 extern BOOL g_shutdown_executed_today;
 extern BOOL g_is_shutdown_pending;
-extern WORD g_last_handled_day_for_timed_shutdown; // Renamed from static s_last... to global
+extern WORD g_last_handled_day_for_timed_shutdown;
 extern AppConfig g_config;
 
 #endif // COMMON_H
