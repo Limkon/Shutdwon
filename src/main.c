@@ -149,12 +149,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
         return 1;
     }
 
-    // 创建主窗口
+    // 创建主窗口（高度 380：新增托盘复选框 + 状态栏）
     int initialCmdShow = g_config.hide_main_window ? SW_HIDE : SW_SHOW;
     g_hMainWindow = CreateWindowExW(
         0, MAIN_WINDOW_CLASS, L"定时闲置关机助手",
         WS_OVERLAPPEDWINDOW | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 430, 320, // 高度 320，确保按钮可见
+        CW_USEDEFAULT, CW_USEDEFAULT, 430, 380,
         NULL, NULL, hInstance, NULL);
 
     if (!g_hMainWindow) {
@@ -164,6 +164,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
         if (g_hMutex) CloseHandle(g_hMutex);
         return 1;
     }
+
+    // 按配置初始化托盘图标（主窗口已创建，g_hMainWindow 有效）
+    InitTrayIconIfConfigured();
+
+    // 按配置更新「隐藏后台」按钮文案
+    SetWindowTextW(GetDlgItem(g_hMainWindow, IDC_BTN_HIDE_PROGRAM),
+                   g_config.show_tray_icon ? L"隐藏后台" : L"最小化");
 
     ApplyConfigToGUI();
     ShowWindow(g_hMainWindow, initialCmdShow);
@@ -179,6 +186,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
     }
 
     // 清理资源
+    CleanupTrayIcon();
     CleanupGetLastInputInfo();
     if (g_hMutex) CloseHandle(g_hMutex);
     UnregisterClassW(MAIN_WINDOW_CLASS, hInstance);
