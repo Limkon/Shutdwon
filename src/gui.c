@@ -106,7 +106,6 @@ static void UpdateStatusText() {
     WCHAR timed_part[128];
     WCHAR idle_part[128];
     WCHAR countdown_part[128];
-    WCHAR tmp[64];
 
     // 定时关机状态
     if (g_config.enable_timed_shutdown) {
@@ -149,8 +148,6 @@ static void UpdateStatusText() {
                L"%ls ｜ %ls ｜ %ls", timed_part, idle_part, countdown_part);
 
     SetDlgItemTextW(g_hMainWindow, IDC_STATIC_STATUS, g_status_text);
-
-    (void)tmp; // 保留以防未来扩展
 }
 
 // --- GUI Functions ---
@@ -175,6 +172,9 @@ void ApplyConfigToGUI() {
 
     InvalidateRect(g_hMainWindow, NULL, TRUE);
     UpdateWindow(g_hMainWindow);
+
+    // 立即刷新状态栏初始文字（g_hMainWindow 已赋值，安全）
+    UpdateStatusText();
 }
 
 void GetConfigFromGUI() {
@@ -268,6 +268,9 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 20, yPos, windowWidth - 40, 24, hWnd, (HMENU)IDC_STATIC_STATUS, NULL, NULL);
 
             SetSystemFont(hWnd);
+
+            // 状态栏每秒刷新（定时器归主窗口，WM_DESTROY 中 Kill）
+            SetTimer(hWnd, IDT_TIMER_UPDATE_STATUS, 1000, NULL);
             break;
         }
 
@@ -397,8 +400,6 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     switch (msg) {
         case WM_CREATE:
             g_hHiddenWindow = hWnd;
-            // 状态栏每秒刷新
-            SetTimer(hWnd, IDT_TIMER_UPDATE_STATUS, 1000, NULL);
             break;
 
         case WM_TIMER:
@@ -450,14 +451,12 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 KillTimer(hWnd, IDT_TIMER_CHECK_IDLE);
                 KillTimer(hWnd, IDT_TIMER_CHECK_TIMED_SHUTDOWN);
                 KillTimer(hWnd, IDT_TIMER_SHUTDOWN_COUNTDOWN);
-                KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
                 g_is_shutdown_pending = FALSE;
             }
             return 0;
         case WM_QUERYENDSESSION:
             return TRUE;
         case WM_DESTROY:
-            KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
             PostQuitMessage(0);
             break;
     }
