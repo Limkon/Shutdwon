@@ -7,22 +7,47 @@ static PFN_GetLastInputInfo pfnGetLastInputInfo = NULL;
 static HMODULE hUser32 = NULL;
 
 // --- Internal helper: run shutdown.exe with given arguments ---
+// 返回 TRUE 表示 shutdown.exe 执行且退出码为 0；FALSE 表示创建失败或退出码非 0（已弹错误框）
 static BOOL RunShutdownCommand(const WCHAR* args) {
-    WCHAR cmdLine[64];
-    swprintf_s(cmdLine, ARRAYSIZE(cmdLine), L"shutdown.exe %ls", args);
+    WCHAR cmdLine[128];
+
+    // 使用完整路径，避免当前目录同名 shutdown.exe 劫持
+    WCHAR sysDir[MAX_PATH];
+    UINT sysDirLen = GetSystemDirectoryW(sysDir, MAX_PATH);
+    if (sysDirLen > 0 && sysDirLen < MAX_PATH) {
+        swprintf_s(cmdLine, ARRAYSIZE(cmdLine), L"%ls\\shutdown.exe %ls", sysDir, args);
+    } else {
+        swprintf_s(cmdLine, ARRAYSIZE(cmdLine), L"shutdown.exe %ls", args);
+    }
 
     STARTUPINFOW si = { sizeof(si) };
     PROCESS_INFORMATION pi = {0};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
 
-    if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-                       CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return TRUE;
+    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        DWORD err = GetLastError();
+        WCHAR msg[256];
+        swprintf_s(msg, ARRAYSIZE(msg), L"CreateProcess 失败，错误码：%lu\n命令：%ls", err, cmdLine);
+        MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        return FALSE;
     }
-    return FALSE;
+
+    // 等待进程结束，获取退出码
+    WaitForSingleObject(pi.hProcess, 5000);
+    DWORD exitCode = 0;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    if (exitCode != 0) {
+        WCHAR msg[256];
+        swprintf_s(msg, ARRAYSIZE(msg), L"shutdown.exe 返回错误码：%lu\n命令：%ls", exitCode, cmdLine);
+        MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        return FALSE;
+    }
+    return TRUE;
 }
 
 // --- Autorun Functions ---
@@ -66,6 +91,9 @@ void StartShutdownProcess(UINT countdown) {
     if (g_is_shutdown_pending) {
         return;
     }
+    if (countdown == 0) {
+        countdown = 1;   // SetTimer 间隔不能为 0；系统侧 -t 0 仍立即关机
+    }
     g_is_shutdown_pending = TRUE;
 
     WCHAR args[32];
@@ -73,7 +101,6 @@ void StartShutdownProcess(UINT countdown) {
 
     if (!RunShutdownCommand(args)) {
         g_is_shutdown_pending = FALSE;
-        MessageBoxW(g_hMainWindow, L"执行关机命令失败！请检查权限。", L"关机错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
         return;
     }
 
