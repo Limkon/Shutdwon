@@ -402,11 +402,8 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_CLOSE:
-            if (g_tray_icon_added) {
-                ShowWindow(hWnd, SW_HIDE);
-            } else {
-                ShowWindow(hWnd, SW_MINIMIZE);
-            }
+            // 点关闭按钮：隐藏窗口，程序继续后台运行（定时器照常工作）
+            ShowWindow(hWnd, SW_HIDE);
             break;
 
         case WM_DESTROY:
