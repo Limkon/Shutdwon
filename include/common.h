@@ -6,6 +6,7 @@
 // 避免 warning C4005: macro redefinition
 
 #include <windows.h>
+#include <shellapi.h>   // NOTIFYICONDATAW / Shell_NotifyIconW
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +33,11 @@ typedef struct {
     int idle_minutes;
     int countdown_seconds;
     BOOL hide_main_window;
+    BOOL show_tray_icon;
 } AppConfig;
+
+// --- Tray Icon ---
+#define WM_TRAYICON (WM_APP + 1)
 
 // --- Global Variables (Extern) ---
 extern WCHAR g_config_file_path[MAX_PATH];
@@ -43,5 +48,11 @@ extern BOOL g_shutdown_executed_today;
 extern BOOL g_is_shutdown_pending;
 extern WORD g_last_handled_day_for_timed_shutdown;
 extern AppConfig g_config;
+
+// Tray icon runtime state
+extern BOOL g_show_tray_icon_active;
+extern NOTIFYICONDATAW g_nid;
+extern BOOL g_tray_icon_added;
+extern WCHAR g_status_text[512];
 
 #endif // COMMON_H
