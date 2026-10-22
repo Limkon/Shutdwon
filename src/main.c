@@ -149,12 +149,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
         return 1;
     }
 
-    // 创建主窗口（高度 380：新增托盘复选框 + 状态栏）
+    // 创建主窗口（高度 430：三行状态栏 + 新控件）
     int initialCmdShow = g_config.hide_main_window ? SW_HIDE : SW_SHOW;
     g_hMainWindow = CreateWindowExW(
         0, MAIN_WINDOW_CLASS, L"定时闲置关机助手",
         WS_OVERLAPPEDWINDOW | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 430, 380,
+        CW_USEDEFAULT, CW_USEDEFAULT, 430, 430,
         NULL, NULL, hInstance, NULL);
 
     if (!g_hMainWindow) {
