@@ -40,6 +40,119 @@ void SetSystemFont(HWND hwndParent) {
     EnumChildWindows(hwndParent, EnumChildProc, (LPARAM)g_hAppFont);
 }
 
+// --- Tray Icon Helpers ---
+static void CreateTrayIcon() {
+    if (g_tray_icon_added) return;
+
+    memset(&g_nid, 0, sizeof(g_nid));
+    g_nid.cbSize = sizeof(NOTIFYICONDATAW);
+    g_nid.hWnd = g_hMainWindow;
+    g_nid.uID = 1;
+    g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_nid.uCallbackMessage = WM_TRAYICON;
+    g_nid.hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(IDI_APPICON));
+    wcscpy_s(g_nid.szTip, ARRAYSIZE(g_nid.szTip), L"定时闲置关机助手");
+
+    if (Shell_NotifyIconW(NIM_ADD, &g_nid)) {
+        g_tray_icon_added = TRUE;
+        g_show_tray_icon_active = TRUE;
+    } else {
+        g_tray_icon_added = FALSE;
+        g_show_tray_icon_active = FALSE;
+    }
+}
+
+static void RemoveTrayIcon() {
+    if (g_tray_icon_added) {
+        Shell_NotifyIconW(NIM_DELETE, &g_nid);
+        g_tray_icon_added = FALSE;
+    }
+    g_show_tray_icon_active = FALSE;
+}
+
+static void ShowTrayContextMenu() {
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) return;
+
+    AppendMenuW(hMenu, MF_STRING, IDM_TRAY_SHOW_MAIN, L"显示主界面");
+    AppendMenuW(hMenu, MF_STRING, IDM_TRAY_SHUTDOWN_NOW, L"立即关机");
+    AppendMenuW(hMenu, MF_STRING | (g_is_shutdown_pending ? MF_ENABLED : MF_GRAYED), IDM_TRAY_CANCEL_SHUTDOWN, L"取消倒计时");
+    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(hMenu, MF_STRING, IDM_TRAY_EXIT, L"退出程序");
+
+    POINT pt;
+    GetCursorPos(&pt);
+    SetForegroundWindow(g_hMainWindow);
+    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_hMainWindow, NULL);
+    PostMessage(g_hMainWindow, WM_NULL, 0, 0);
+    DestroyMenu(hMenu);
+}
+
+// --- Status Text Helpers ---
+static void FormatMinutesToHMS(long total_minutes, WCHAR* buf, size_t cch) {
+    if (total_minutes < 0) total_minutes = 0;
+    long hours = total_minutes / 60;
+    long mins = total_minutes % 60;
+    if (hours > 0) {
+        swprintf_s(buf, cch, L"%ld 小时 %ld 分", hours, mins);
+    } else {
+        swprintf_s(buf, cch, L"%ld 分", mins);
+    }
+}
+
+static void UpdateStatusText() {
+    if (!g_hMainWindow) return;
+
+    WCHAR timed_part[128];
+    WCHAR idle_part[128];
+    WCHAR countdown_part[128];
+    WCHAR tmp[64];
+
+    // 定时关机状态
+    if (g_config.enable_timed_shutdown) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        long now_sec = st.wHour * 3600L + st.wMinute * 60L + st.wSecond;
+        long sched_sec = g_config.shutdown_hour * 3600L + g_config.shutdown_minute * 60L;
+        long remain_sec = sched_sec - now_sec;
+        if (remain_sec < 0) remain_sec += 24L * 3600L;
+
+        WCHAR remain_str[64];
+        FormatMinutesToHMS(remain_sec / 60, remain_str, ARRAYSIZE(remain_str));
+        swprintf_s(timed_part, ARRAYSIZE(timed_part),
+                   L"定时关机：已启用，%02d:%02d 触发（剩余 %ls）",
+                   g_config.shutdown_hour, g_config.shutdown_minute, remain_str);
+    } else {
+        swprintf_s(timed_part, ARRAYSIZE(timed_part), L"定时关机：未启用");
+    }
+
+    // 闲置关机状态
+    if (g_config.enable_idle_shutdown && g_config.idle_minutes > 0) {
+        DWORD idle_ms = GetIdleTime();
+        long idle_min = (long)(idle_ms / 60000UL);
+        swprintf_s(idle_part, ARRAYSIZE(idle_part),
+                   L"闲置关机：已启用，阈值 %d 分钟，当前已闲置 %ld 分钟",
+                   g_config.idle_minutes, idle_min);
+    } else {
+        swprintf_s(idle_part, ARRAYSIZE(idle_part), L"闲置关机：未启用");
+    }
+
+    // 倒计时状态
+    if (g_is_shutdown_pending) {
+        swprintf_s(countdown_part, ARRAYSIZE(countdown_part),
+                   L"倒计时：进行中（%d 秒内关机）", g_config.countdown_seconds);
+    } else {
+        swprintf_s(countdown_part, ARRAYSIZE(countdown_part), L"倒计时：未进行");
+    }
+
+    swprintf_s(g_status_text, ARRAYSIZE(g_status_text),
+               L"%ls ｜ %ls ｜ %ls", timed_part, idle_part, countdown_part);
+
+    SetDlgItemTextW(g_hMainWindow, IDC_STATIC_STATUS, g_status_text);
+
+    (void)tmp; // 保留以防未来扩展
+}
+
 // --- GUI Functions ---
 void ApplyConfigToGUI() {
     if (!g_hMainWindow) return;
@@ -48,6 +161,7 @@ void ApplyConfigToGUI() {
     SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_TIMED_SHUTDOWN), BM_SETCHECK, g_config.enable_timed_shutdown ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_IDLE_SHUTDOWN), BM_SETCHECK, g_config.enable_idle_shutdown ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_HIDE_MAIN_WINDOW), BM_SETCHECK, g_config.hide_main_window ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_SHOW_TRAY_ICON), BM_SETCHECK, g_config.show_tray_icon ? BST_CHECKED : BST_UNCHECKED, 0);
 
     WCHAR szTime[16];
     swprintf_s(szTime, ARRAYSIZE(szTime), L"%02d", g_config.shutdown_hour);
@@ -68,6 +182,7 @@ void GetConfigFromGUI() {
     g_config.enable_timed_shutdown = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_TIMED_SHUTDOWN), BM_GETCHECK, 0, 0) == BST_CHECKED);
     g_config.enable_idle_shutdown = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_IDLE_SHUTDOWN), BM_GETCHECK, 0, 0) == BST_CHECKED);
     g_config.hide_main_window = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_HIDE_MAIN_WINDOW), BM_GETCHECK, 0, 0) == BST_CHECKED);
+    g_config.show_tray_icon = (SendMessage(GetDlgItem(g_hMainWindow, IDC_CHK_SHOW_TRAY_ICON), BM_GETCHECK, 0, 0) == BST_CHECKED);
 
     WCHAR szTime[16];
     GetDlgItemTextW(g_hMainWindow, IDC_EDIT_SHUTDOWN_HOUR, szTime, ARRAYSIZE(szTime));
@@ -124,9 +239,14 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             // 5. 隐藏界面
             CreateWindowW(L"STATIC", L"启动时隐藏界面:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
             CreateWindowW(L"BUTTON", L"是", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 50, 20, hWnd, (HMENU)IDC_CHK_HIDE_MAIN_WINDOW, NULL, NULL);
+            yPos += lineSpacing;
+
+            // 6. 显示托盘图标
+            CreateWindowW(L"STATIC", L"显示托盘图标:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
+            CreateWindowW(L"BUTTON", L"是", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 50, 20, hWnd, (HMENU)IDC_CHK_SHOW_TRAY_ICON, NULL, NULL);
             yPos += lineSpacing + 15;
 
-            // 6. 按钮区域
+            // 7. 按钮区域
             RECT clientRect;
             GetClientRect(hWnd, &clientRect);
             int windowWidth = clientRect.right - clientRect.left;
@@ -140,6 +260,12 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             CreateWindowW(L"BUTTON", L"隐藏后台", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_HIDE_PROGRAM, NULL, NULL);
             btnX += buttonWidth + buttonHorizontalSpacing;
             CreateWindowW(L"BUTTON", L"退出程序", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_EXIT_APP, NULL, NULL);
+            yPos += buttonHeight + 15;
+
+            // 8. 状态栏
+            CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"状态：就绪", 
+                WS_VISIBLE | WS_CHILD | SS_LEFT | SS_CENTERIMAGE,
+                20, yPos, windowWidth - 40, 24, hWnd, (HMENU)IDC_STATIC_STATUS, NULL, NULL);
 
             SetSystemFont(hWnd);
             break;
@@ -153,7 +279,19 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     SaveConfig(g_config_file_path);
                     SetAutorun(g_config.enable_autorun);
 
+                    // 托盘图标显隐切换
+                    if (g_config.show_tray_icon && !g_tray_icon_added) {
+                        CreateTrayIcon();
+                    } else if (!g_config.show_tray_icon && g_tray_icon_added) {
+                        RemoveTrayIcon();
+                    }
+
+                    // 更新「隐藏后台」按钮文案
+                    SetWindowTextW(GetDlgItem(hWnd, IDC_BTN_HIDE_PROGRAM),
+                                   g_config.show_tray_icon ? L"隐藏后台" : L"最小化");
+
                     SetShutdownTimers(); 
+                    UpdateStatusText();
 
                     BOOL immediate_shutdown_triggered_on_save = FALSE;
                     if (g_config.enable_timed_shutdown && !g_is_shutdown_pending && !g_shutdown_executed_today) {
@@ -167,6 +305,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                             StartShutdownProcess(g_config.countdown_seconds);
                             g_shutdown_executed_today = TRUE; 
                             immediate_shutdown_triggered_on_save = TRUE;
+                            UpdateStatusText();
                         }
                     }
 
@@ -176,13 +315,52 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 case IDC_BTN_SHUTDOWN_NOW:
                     StartShutdownProcess(g_config.countdown_seconds);
+                    UpdateStatusText();
                     break;
                 case IDC_BTN_HIDE_PROGRAM:
-                    ShowWindow(hWnd, SW_HIDE);
+                    if (g_config.show_tray_icon) {
+                        ShowWindow(hWnd, SW_HIDE);
+                    } else {
+                        ShowWindow(hWnd, SW_MINIMIZE);
+                    }
                     break;
                 case IDC_BTN_EXIT_APP:
+                    RemoveTrayIcon();
                     DestroyWindow(g_hHiddenWindow); 
                     break;
+                case IDM_TRAY_SHOW_MAIN:
+                    ShowWindow(g_hMainWindow, SW_RESTORE);
+                    SetForegroundWindow(g_hMainWindow);
+                    break;
+                case IDM_TRAY_SHUTDOWN_NOW:
+                    StartShutdownProcess(g_config.countdown_seconds);
+                    UpdateStatusText();
+                    break;
+                case IDM_TRAY_CANCEL_SHUTDOWN:
+                    CancelShutdownProcess();
+                    UpdateStatusText();
+                    break;
+                case IDM_TRAY_EXIT:
+                    RemoveTrayIcon();
+                    DestroyWindow(g_hHiddenWindow);
+                    break;
+            }
+            break;
+        }
+
+        case WM_TRAYICON: {
+            if (lParam == WM_LBUTTONDBLCLK) {
+                ShowWindow(g_hMainWindow, SW_RESTORE);
+                SetForegroundWindow(g_hMainWindow);
+            } else if (lParam == WM_RBUTTONUP) {
+                ShowTrayContextMenu();
+            }
+            break;
+        }
+
+        case WM_TIMER: {
+            if (wParam == IDT_TIMER_UPDATE_STATUS) {
+                UpdateStatusText();
             }
             break;
         }
@@ -195,10 +373,16 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_CLOSE:
-            ShowWindow(hWnd, SW_HIDE);
+            if (g_config.show_tray_icon) {
+                ShowWindow(hWnd, SW_HIDE);
+            } else {
+                ShowWindow(hWnd, SW_MINIMIZE);
+            }
             break;
 
         case WM_DESTROY:
+            RemoveTrayIcon();
+            KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
             if (g_hAppFont) {
                 DeleteObject(g_hAppFont);
                 g_hAppFont = NULL;
@@ -213,6 +397,8 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
     switch (msg) {
         case WM_CREATE:
             g_hHiddenWindow = hWnd;
+            // 状态栏每秒刷新
+            SetTimer(hWnd, IDT_TIMER_UPDATE_STATUS, 1000, NULL);
             break;
 
         case WM_TIMER:
@@ -222,6 +408,7 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     DWORD configured_idle_time_ms = (DWORD)g_config.idle_minutes * 60 * 1000;
                     if (configured_idle_time_ms > 0 && idle_time_ms >= configured_idle_time_ms) {
                         StartShutdownProcess(g_config.countdown_seconds);
+                        UpdateStatusText();
                     }
                 }
             } else if (LOWORD(wParam) == IDT_TIMER_CHECK_TIMED_SHUTDOWN) {
@@ -246,24 +433,14 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                     if (time_diff_seconds >= 0 && time_diff_seconds <= 60) {
                         StartShutdownProcess(g_config.countdown_seconds);
                         g_shutdown_executed_today = TRUE;
+                        UpdateStatusText();
                     }
                 }
             } else if (LOWORD(wParam) == IDT_TIMER_SHUTDOWN_COUNTDOWN) {
+                // 系统侧 shutdown -s -t N 已执行关机，这里只清理本地状态
                 KillTimer(hWnd, IDT_TIMER_SHUTDOWN_COUNTDOWN);
                 g_is_shutdown_pending = FALSE;
-
-                STARTUPINFOW si = { sizeof(si) };
-                PROCESS_INFORMATION pi = {0};
-                si.dwFlags = STARTF_USESHOWWINDOW;
-                si.wShowWindow = SW_HIDE;
-                WCHAR cmdLine[] = L"shutdown.exe -s -t 0";
-                if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-                                   CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-                } else {
-                    MessageBoxW(NULL, L"执行关机命令失败！请检查权限。", L"关机错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
-                }
+                UpdateStatusText();
                 PostQuitMessage(0);
             }
             break;
@@ -273,12 +450,14 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
                 KillTimer(hWnd, IDT_TIMER_CHECK_IDLE);
                 KillTimer(hWnd, IDT_TIMER_CHECK_TIMED_SHUTDOWN);
                 KillTimer(hWnd, IDT_TIMER_SHUTDOWN_COUNTDOWN);
+                KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
                 g_is_shutdown_pending = FALSE;
             }
             return 0;
         case WM_QUERYENDSESSION:
             return TRUE;
         case WM_DESTROY:
+            KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
             PostQuitMessage(0);
             break;
     }
