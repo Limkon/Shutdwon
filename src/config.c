@@ -27,6 +27,7 @@ BOOL LoadConfig(const WCHAR* configPath) {
     g_config.idle_minutes = 0;
     g_config.countdown_seconds = 30;
     g_config.hide_main_window = FALSE;
+    g_config.show_tray_icon = TRUE;
 
     WIN32_FIND_DATAW findData;
     HANDLE hFind = FindFirstFileW(configPath, &findData);
@@ -45,6 +46,7 @@ BOOL LoadConfig(const WCHAR* configPath) {
         fwprintf(f_create, L"IdleMinutes=%d\n", g_config.idle_minutes);
         fwprintf(f_create, L"CountdownSeconds=%d\n", g_config.countdown_seconds);
         fwprintf(f_create, L"HideMainWindow=%ls\n", g_config.hide_main_window ? L"true" : L"false");
+        fwprintf(f_create, L"ShowTrayIcon=%ls\n", g_config.show_tray_icon ? L"true" : L"false");
         fclose(f_create);
     }
     FindClose(hFind);
@@ -57,6 +59,7 @@ BOOL LoadConfig(const WCHAR* configPath) {
     g_config.idle_minutes = GetPrivateProfileIntW(CONFIG_SECTION_NAME, L"IdleMinutes", g_config.idle_minutes, configPath);
     g_config.countdown_seconds = GetPrivateProfileIntW(CONFIG_SECTION_NAME, L"CountdownSeconds", g_config.countdown_seconds, configPath);
     g_config.hide_main_window = GetPrivateProfileBoolW(CONFIG_SECTION_NAME, L"HideMainWindow", g_config.hide_main_window, configPath);
+    g_config.show_tray_icon = GetPrivateProfileBoolW(CONFIG_SECTION_NAME, L"ShowTrayIcon", g_config.show_tray_icon, configPath);
 
     return TRUE;
 }
@@ -70,6 +73,7 @@ BOOL SaveConfig(const WCHAR* configPath) {
     WritePrivateProfileIntW(CONFIG_SECTION_NAME, L"IdleMinutes", g_config.idle_minutes, configPath);
     WritePrivateProfileIntW(CONFIG_SECTION_NAME, L"CountdownSeconds", g_config.countdown_seconds, configPath);
     WritePrivateProfileBoolW(CONFIG_SECTION_NAME, L"HideMainWindow", g_config.hide_main_window, configPath);
+    WritePrivateProfileBoolW(CONFIG_SECTION_NAME, L"ShowTrayIcon", g_config.show_tray_icon, configPath);
 
     if (WritePrivateProfileStringW(NULL, NULL, NULL, configPath) == 0) {
         return FALSE;
