@@ -12,14 +12,28 @@ static BOOL CALLBACK EnumChildProc(HWND hwndChild, LPARAM lParam) {
     return TRUE;
 }
 
-// --- 核心修复：创建并应用系统默认字体 ---
+// --- 核心优化：使用微软雅黑 UI + ClearType 抗锯齿字体 ---
 void SetSystemFont(HWND hwndParent) {
     if (g_hAppFont == NULL) {
-        NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
-        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
-            g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
-        } else {
-            g_hAppFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+        LOGFONTW lf = {0};
+        lf.lfHeight = -14;                    // 约 10.5pt，比默认 9pt 更清晰
+        lf.lfWeight = FW_NORMAL;              // 普通字重，避免过粗发黑
+        lf.lfCharSet = DEFAULT_CHARSET;
+        lf.lfQuality = CLEARTYPE_QUALITY;     // 启用 ClearType 抗锯齿，消除毛刺
+        lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+        wcscpy_s(lf.lfFaceName, LF_FACESIZE, L"Microsoft YaHei UI");
+
+        g_hAppFont = CreateFontIndirectW(&lf);
+
+        // 如果系统没有微软雅黑，回退到系统消息字体（但保持 ClearType）
+        if (!g_hAppFont) {
+            NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
+            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
+                ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
+                g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
+            } else {
+                g_hAppFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+            }
         }
     }
     SendMessage(hwndParent, WM_SETFONT, (WPARAM)g_hAppFont, MAKELPARAM(TRUE, 0));
@@ -89,21 +103,21 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             // 2. 定时关机
             CreateWindowW(L"STATIC", L"定时关机:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
             CreateWindowW(L"BUTTON", L"启用", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 60, 20, hWnd, (HMENU)IDC_CHK_TIMED_SHUTDOWN, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_HOUR, NULL, NULL);
+            CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_HOUR, NULL, NULL);
             CreateWindowW(L"STATIC", L":", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_CENTER, checkboxColX + 100, yPos, 10, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 115, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_MINUTE, NULL, NULL);
+            CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_CENTER, checkboxColX + 115, yPos, editWidthSmall, 22, hWnd, (HMENU)IDC_EDIT_SHUTDOWN_MINUTE, NULL, NULL);
             yPos += lineSpacing;
 
             // 3. 闲置关机
             CreateWindowW(L"STATIC", L"闲置关机:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
             CreateWindowW(L"BUTTON", L"启用", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, checkboxColX, yPos, 60, 20, hWnd, (HMENU)IDC_CHK_IDLE_SHUTDOWN, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_IDLE_MINUTES, NULL, NULL);
+            CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_CENTER, checkboxColX + 65, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_IDLE_MINUTES, NULL, NULL);
             CreateWindowW(L"STATIC", L"分钟", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, checkboxColX + 130, yPos, 40, 20, hWnd, NULL, NULL, NULL);
             yPos += lineSpacing;
 
             // 4. 倒计时
             CreateWindowW(L"STATIC", L"关机倒计时:", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, 20, yPos, labelWidth, 20, hWnd, NULL, NULL, NULL);
-            CreateWindowW(L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_CENTER, checkboxColX, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_COUNTDOWN_SECONDS, NULL, NULL);
+            CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_VISIBLE | WS_CHILD | ES_NUMBER | ES_CENTER, checkboxColX, yPos, editWidthLarge, 22, hWnd, (HMENU)IDC_EDIT_COUNTDOWN_SECONDS, NULL, NULL);
             CreateWindowW(L"STATIC", L"秒", WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE, checkboxColX + 65, yPos, 40, 20, hWnd, NULL, NULL, NULL);
             yPos += lineSpacing;
 
@@ -173,6 +187,13 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             break;
         }
 
+        case WM_CTLCOLORSTATIC: {
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, RGB(60, 60, 60));       // 深灰，比纯黑柔和
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+        }
+
         case WM_CLOSE:
             ShowWindow(hWnd, SW_HIDE);
             break;
@@ -187,7 +208,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
-// --- Hidden Window Procedure (恢复此函数以解决 LNK2019) ---
+// --- Hidden Window Procedure ---
 LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE:
