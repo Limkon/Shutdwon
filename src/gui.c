@@ -272,9 +272,9 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             CreateWindowW(L"BUTTON", L"退出程序", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_EXIT_APP, NULL, NULL);
             yPos += buttonHeight + 15;
 
-            // 8. 状态栏（三行 + 防裁切省略号）
+            // 8. 状态栏（三行，SS_LEFT 支持 \r\n 换行）
             CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"状态：就绪", 
-                WS_VISIBLE | WS_CHILD | SS_LEFT | SS_ENDELLIPSIS,
+                WS_VISIBLE | WS_CHILD | SS_LEFT | SS_NOPREFIX,
                 20, yPos, windowWidth - 40, 60, hWnd, (HMENU)IDC_STATIC_STATUS, NULL, NULL);
 
             SetSystemFont(hWnd);
