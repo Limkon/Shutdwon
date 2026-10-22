@@ -28,7 +28,7 @@ void SetSystemFont(HWND hwndParent) {
         // 如果系统没有微软雅黑，回退到系统消息字体（但保持 ClearType）
         if (!g_hAppFont) {
             NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
-            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
+            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0)) {
                 ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
                 g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
             } else {
@@ -155,7 +155,7 @@ static void UpdateStatusText() {
     }
 
     swprintf_s(g_status_text, ARRAYSIZE(g_status_text),
-               L"%ls ｜ %ls ｜ %ls", timed_part, idle_part, countdown_part);
+               L"%ls\r\n%ls\r\n%ls", timed_part, idle_part, countdown_part);
 
     SetDlgItemTextW(g_hMainWindow, IDC_STATIC_STATUS, g_status_text);
 }
@@ -272,10 +272,10 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             CreateWindowW(L"BUTTON", L"退出程序", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, btnX, yPos, buttonWidth, buttonHeight, hWnd, (HMENU)IDC_BTN_EXIT_APP, NULL, NULL);
             yPos += buttonHeight + 15;
 
-            // 8. 状态栏
+            // 8. 状态栏（三行 + 防裁切省略号）
             CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"状态：就绪", 
-                WS_VISIBLE | WS_CHILD | SS_LEFT | SS_CENTERIMAGE,
-                20, yPos, windowWidth - 40, 24, hWnd, (HMENU)IDC_STATIC_STATUS, NULL, NULL);
+                WS_VISIBLE | WS_CHILD | SS_LEFT | SS_ENDELLIPSIS,
+                20, yPos, windowWidth - 40, 60, hWnd, (HMENU)IDC_STATIC_STATUS, NULL, NULL);
 
             SetSystemFont(hWnd);
 
