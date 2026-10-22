@@ -60,6 +60,9 @@ void StopShutdownCountdown() {
 }
 
 void InitializeGetLastInputInfo() {
+    if (hUser32 != NULL) {
+        return; // 幂等保护：防止重复 LoadLibrary 造成句柄泄漏
+    }
     hUser32 = LoadLibraryW(L"User32.dll");
     if (hUser32) {
         pfnGetLastInputInfo = (PFN_GetLastInputInfo)GetProcAddress(hUser32, "GetLastInputInfo");
