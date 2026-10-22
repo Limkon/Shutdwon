@@ -33,7 +33,7 @@ void SetSystemFont(HWND hwndParent) {
         // 如果系统没有微软雅黑，回退到系统消息字体（但保持 ClearType）
         if (!g_hAppFont) {
             NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
-            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
+            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0)) {
                 ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
                 g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
             } else {
@@ -104,9 +104,9 @@ static void ShowTrayContextMenu() {
 
     POINT pt;
     GetCursorPos(&pt);
-    SetForegroundWindow(g_hMainWindow);
+    SetForegroundWindow(g_hMainWindow);    // 菜单前必须置前
     TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_hMainWindow, NULL);
-    PostMessage(g_hMainWindow, WM_NULL, 0, 0);
+    PostMessage(g_hMainWindow, WM_NULL, 0, 0);   // 防菜单卡死（Win7 必需）
     DestroyMenu(hMenu);
 }
 
@@ -375,13 +375,14 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_TRAYICON: {
-            UINT uMsg = (UINT)lParam;
+            // 关键修复：取低 16 位，兼容 Win7 的 v0 回调格式
+            UINT uMsg = LOWORD(lParam);
             if (uMsg == WM_LBUTTONDBLCLK || uMsg == WM_LBUTTONDOWN) {
-                // 兼容 v0/v4 行为，单击或双击都恢复窗口
                 ShowWindow(g_hMainWindow, SW_SHOW);
                 ShowWindow(g_hMainWindow, SW_RESTORE);
                 SetForegroundWindow(g_hMainWindow);
-            } else if (uMsg == WM_RBUTTONUP) {
+            } else if (uMsg == WM_RBUTTONUP || uMsg == WM_CONTEXTMENU) {
+                // 补充 WM_CONTEXTMENU 兼容
                 ShowTrayContextMenu();
             }
             break;
