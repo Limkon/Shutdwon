@@ -6,9 +6,58 @@ typedef BOOL (WINAPI *PFN_GetLastInputInfo)(LPLASTINPUTINFO);
 static PFN_GetLastInputInfo pfnGetLastInputInfo = NULL;
 static HMODULE hUser32 = NULL;
 
-// --- Internal helper: run shutdown.exe with given arguments ---
-// 返回 TRUE 表示 shutdown.exe 执行且退出码为 0；FALSE 表示创建失败或退出码非 0
-// showError: 是否在失败时弹出错误提示（发起关机弹，取消关机不弹）
+// --- 权限提升与原生关机 API ---
+// 尝试启用 SE_SHUTDOWN_NAME 特权
+static BOOL EnableShutdownPrivilege() {
+    HANDLE hToken;
+    TOKEN_PRIVILEGES tkp;
+
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+        return FALSE;
+    }
+
+    if (!LookupPrivilegeValueW(NULL, SE_SHUTDOWN_NAME, &tkp.Privileges[0].Luid)) {
+        CloseHandle(hToken);
+        return FALSE;
+    }
+
+    tkp.PrivilegeCount = 1;
+    tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    BOOL result = AdjustTokenPrivileges(hToken, FALSE, &tkp, 0, (PTOKEN_PRIVILEGES)NULL, 0);
+    // AdjustTokenPrivileges 即使返回 TRUE，也可能因为权限不足而未实际生效
+    if (result && GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
+        result = FALSE;
+    }
+
+    CloseHandle(hToken);
+    return result;
+}
+
+// 尝试使用原生 API 关机
+static BOOL TryShutdownAPI(UINT countdown) {
+    if (!EnableShutdownPrivilege()) {
+        return FALSE; // 权限不足（未提权），放弃 API 方案
+    }
+
+    // 参数: 机器名(NULL为本机), 提示消息, 倒计时秒数, 强制关闭应用, 关机后重启(FALSE), 原因代码
+    if (InitiateSystemShutdownExW(NULL, L"系统将在倒计时结束后关机，请保存工作。", countdown, TRUE, FALSE,
+                                  SHTDN_REASON_MAJOR_APPLICATION | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED)) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+// 尝试使用原生 API 取消关机
+static BOOL TryAbortShutdownAPI() {
+    if (!EnableShutdownPrivilege()) {
+        return FALSE;
+    }
+    return AbortSystemShutdownW(NULL);
+}
+
+// --- 备用方案：依赖 shutdown.exe 命令行 ---
 static BOOL RunShutdownCommand(const WCHAR* args, BOOL showError) {
     WCHAR cmdLine[128];
 
@@ -37,7 +86,6 @@ static BOOL RunShutdownCommand(const WCHAR* args, BOOL showError) {
         return FALSE;
     }
 
-    // 等待进程结束，获取退出码
     WaitForSingleObject(pi.hProcess, 5000);
     DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);
@@ -91,7 +139,6 @@ void SetAutorun(BOOL enable) {
 }
 
 // --- Shutdown Functions ---
-// 重命名为 StartShutdownProcess 以解决冲突
 void StartShutdownProcess(UINT countdown) {
     if (g_is_shutdown_pending) {
         return;
@@ -101,23 +148,35 @@ void StartShutdownProcess(UINT countdown) {
     }
     g_is_shutdown_pending = TRUE;
 
-    WCHAR args[32];
-    swprintf_s(args, ARRAYSIZE(args), L"-s -t %u", countdown);
+    BOOL success = FALSE;
 
-    // 发起关机时，若失败需要弹窗
-    if (!RunShutdownCommand(args, TRUE)) {
+    // 方案 1：尝试原生 API 方案（自带系统倒计时与取消功能）
+    success = TryShutdownAPI(countdown);
+
+    // 方案 2：若原生 API 失败（如无特权），回退到命令行方案
+    if (!success) {
+        WCHAR args[32];
+        swprintf_s(args, ARRAYSIZE(args), L"-s -t %u", countdown);
+        success = RunShutdownCommand(args, TRUE);
+    }
+
+    if (!success) {
         g_is_shutdown_pending = FALSE;
         return;
     }
 
-    // 设置本地倒计时定时器，到点后清理状态（系统侧 shutdown -t N 会自行执行关机）
+    // 设置本地倒计时定时器，到点后清理状态
     SetTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN, countdown * 1000, NULL);
 }
 
 void CancelShutdownProcess() {
-    // 无论本地状态如何，都尝试中止系统侧倒计时（幂等）
-    // 取消关机时，如果本来就没有关机任务（错误码 1116），静默忽略，不弹窗
-    RunShutdownCommand(L"-a", FALSE);
+    // 无论当前走的是哪个方案，都尝试取消（幂等，失败静默忽略）
+    
+    // 尝试原生取消
+    if (!TryAbortShutdownAPI()) {
+        // 如果原生取消失败，尝试命令行取消
+        RunShutdownCommand(L"-a", FALSE);
+    }
 
     KillTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN);
     g_is_shutdown_pending = FALSE;
@@ -182,22 +241,18 @@ void SetShutdownTimers() {
             g_config.enable_timed_shutdown = FALSE;
             MessageBoxW(NULL, L"定时关机时间无效，已禁用定时关机！", L"错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
         } else {
-            // 在重新设置定时器之前，重新评估 g_shutdown_executed_today 的状态
             SYSTEMTIME st_current_for_eval;
             GetLocalTime(&st_current_for_eval);
             long current_total_seconds_eval = st_current_for_eval.wHour * 3600 + st_current_for_eval.wMinute * 60 + st_current_for_eval.wSecond;
             long new_scheduled_total_seconds_eval = g_config.shutdown_hour * 3600 + g_config.shutdown_minute * 60;
 
-            // 如果新的计划关机时间在当前时间之后，则重置 g_shutdown_executed_today
             if (new_scheduled_total_seconds_eval > current_total_seconds_eval) {
                 g_shutdown_executed_today = FALSE;
             } else {
                 g_shutdown_executed_today = TRUE;
             }
-            // 确保 g_last_handled_day_for_timed_shutdown 是当前日期
             g_last_handled_day_for_timed_shutdown = st_current_for_eval.wDay;
 
-            // 定时检查的间隔数为60秒
             SetTimer(g_hHiddenWindow, IDT_TIMER_CHECK_TIMED_SHUTDOWN, 60 * 1000, NULL);
         }
     }
