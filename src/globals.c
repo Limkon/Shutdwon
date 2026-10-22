@@ -18,3 +18,9 @@ BOOL g_is_shutdown_pending = FALSE;
 WORD g_last_handled_day_for_timed_shutdown = 0;
 
 AppConfig g_config;
+
+// --- Tray Icon Runtime State ---
+BOOL g_show_tray_icon_active = FALSE;
+NOTIFYICONDATAW g_nid = {0};
+BOOL g_tray_icon_added = FALSE;
+WCHAR g_status_text[512] = {0};
