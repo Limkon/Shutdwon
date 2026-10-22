@@ -70,6 +70,16 @@ static void RemoveTrayIcon() {
     g_show_tray_icon_active = FALSE;
 }
 
+void InitTrayIconIfConfigured() {
+    if (g_config.show_tray_icon) {
+        CreateTrayIcon();
+    }
+}
+
+void CleanupTrayIcon() {
+    RemoveTrayIcon();
+}
+
 static void ShowTrayContextMenu() {
     HMENU hMenu = CreatePopupMenu();
     if (!hMenu) return;
