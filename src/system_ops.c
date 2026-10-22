@@ -7,8 +7,9 @@ static PFN_GetLastInputInfo pfnGetLastInputInfo = NULL;
 static HMODULE hUser32 = NULL;
 
 // --- Internal helper: run shutdown.exe with given arguments ---
-// 返回 TRUE 表示 shutdown.exe 执行且退出码为 0；FALSE 表示创建失败或退出码非 0（已弹错误框）
-static BOOL RunShutdownCommand(const WCHAR* args) {
+// 返回 TRUE 表示 shutdown.exe 执行且退出码为 0；FALSE 表示创建失败或退出码非 0
+// showError: 是否在失败时弹出错误提示（发起关机弹，取消关机不弹）
+static BOOL RunShutdownCommand(const WCHAR* args, BOOL showError) {
     WCHAR cmdLine[128];
 
     // 使用完整路径，避免当前目录同名 shutdown.exe 劫持
@@ -27,10 +28,12 @@ static BOOL RunShutdownCommand(const WCHAR* args) {
 
     if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
                         CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        DWORD err = GetLastError();
-        WCHAR msg[256];
-        swprintf_s(msg, ARRAYSIZE(msg), L"CreateProcess 失败，错误码：%lu\n命令：%ls", err, cmdLine);
-        MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        if (showError) {
+            DWORD err = GetLastError();
+            WCHAR msg[256];
+            swprintf_s(msg, ARRAYSIZE(msg), L"CreateProcess 失败，错误码：%lu\n命令：%ls", err, cmdLine);
+            MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        }
         return FALSE;
     }
 
@@ -42,9 +45,11 @@ static BOOL RunShutdownCommand(const WCHAR* args) {
     CloseHandle(pi.hThread);
 
     if (exitCode != 0) {
-        WCHAR msg[256];
-        swprintf_s(msg, ARRAYSIZE(msg), L"shutdown.exe 返回错误码：%lu\n命令：%ls", exitCode, cmdLine);
-        MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        if (showError) {
+            WCHAR msg[256];
+            swprintf_s(msg, ARRAYSIZE(msg), L"shutdown.exe 返回错误码：%lu\n命令：%ls", exitCode, cmdLine);
+            MessageBoxW(g_hMainWindow, msg, L"关机命令失败", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        }
         return FALSE;
     }
     return TRUE;
@@ -99,7 +104,8 @@ void StartShutdownProcess(UINT countdown) {
     WCHAR args[32];
     swprintf_s(args, ARRAYSIZE(args), L"-s -t %u", countdown);
 
-    if (!RunShutdownCommand(args)) {
+    // 发起关机时，若失败需要弹窗
+    if (!RunShutdownCommand(args, TRUE)) {
         g_is_shutdown_pending = FALSE;
         return;
     }
@@ -110,7 +116,8 @@ void StartShutdownProcess(UINT countdown) {
 
 void CancelShutdownProcess() {
     // 无论本地状态如何，都尝试中止系统侧倒计时（幂等）
-    RunShutdownCommand(L"-a");
+    // 取消关机时，如果本来就没有关机任务（错误码 1116），静默忽略，不弹窗
+    RunShutdownCommand(L"-a", FALSE);
 
     KillTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN);
     g_is_shutdown_pending = FALSE;
