@@ -3,6 +3,11 @@
 #include "../include/system_ops.h"
 #include <commctrl.h>
 
+// 兼容极老 SDK：NOTIFYICON_VERSION_4 未定义时兜底
+#ifndef NOTIFYICON_VERSION_4
+#define NOTIFYICON_VERSION_4 4
+#endif
+
 // 全局字体句柄
 static HFONT g_hAppFont = NULL;
 
@@ -53,7 +58,14 @@ static void CreateTrayIcon() {
     g_nid.hIcon = LoadIconW(GetModuleHandleW(NULL), MAKEINTRESOURCE(IDI_APPICON));
     wcscpy_s(g_nid.szTip, ARRAYSIZE(g_nid.szTip), L"定时闲置关机助手");
 
+    // 清理可能残留的幽灵图标（异常退出时）
+    Shell_NotifyIconW(NIM_DELETE, &g_nid);
+
     if (Shell_NotifyIconW(NIM_ADD, &g_nid)) {
+        // 启用 v4 行为，确保 WM_LBUTTONDBLCLK / WM_RBUTTONUP 回调正常
+        g_nid.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, &g_nid);
+
         g_tray_icon_added = TRUE;
         g_show_tray_icon_active = TRUE;
     } else {
@@ -331,7 +343,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     UpdateStatusText();
                     break;
                 case IDC_BTN_HIDE_PROGRAM:
-                    if (g_config.show_tray_icon) {
+                    if (g_tray_icon_added) {
                         ShowWindow(hWnd, SW_HIDE);
                     } else {
                         ShowWindow(hWnd, SW_MINIMIZE);
@@ -342,6 +354,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     DestroyWindow(g_hHiddenWindow); 
                     break;
                 case IDM_TRAY_SHOW_MAIN:
+                    ShowWindow(g_hMainWindow, SW_SHOW);
                     ShowWindow(g_hMainWindow, SW_RESTORE);
                     SetForegroundWindow(g_hMainWindow);
                     break;
@@ -362,10 +375,13 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_TRAYICON: {
-            if (lParam == WM_LBUTTONDBLCLK) {
+            UINT uMsg = (UINT)lParam;
+            if (uMsg == WM_LBUTTONDBLCLK || uMsg == WM_LBUTTONDOWN) {
+                // 兼容 v0/v4 行为，单击或双击都恢复窗口
+                ShowWindow(g_hMainWindow, SW_SHOW);
                 ShowWindow(g_hMainWindow, SW_RESTORE);
                 SetForegroundWindow(g_hMainWindow);
-            } else if (lParam == WM_RBUTTONUP) {
+            } else if (uMsg == WM_RBUTTONUP) {
                 ShowTrayContextMenu();
             }
             break;
@@ -386,7 +402,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_CLOSE:
-            if (g_config.show_tray_icon) {
+            if (g_tray_icon_added) {
                 ShowWindow(hWnd, SW_HIDE);
             } else {
                 ShowWindow(hWnd, SW_MINIMIZE);
