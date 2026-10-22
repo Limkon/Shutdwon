@@ -6,6 +6,25 @@ typedef BOOL (WINAPI *PFN_GetLastInputInfo)(LPLASTINPUTINFO);
 static PFN_GetLastInputInfo pfnGetLastInputInfo = NULL;
 static HMODULE hUser32 = NULL;
 
+// --- Internal helper: run shutdown.exe with given arguments ---
+static BOOL RunShutdownCommand(const WCHAR* args) {
+    WCHAR cmdLine[64];
+    swprintf_s(cmdLine, ARRAYSIZE(cmdLine), L"shutdown.exe %ls", args);
+
+    STARTUPINFOW si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {0};
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    if (CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+                       CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 // --- Autorun Functions ---
 BOOL IsAutorunEnabled() {
     HKEY hKey;
@@ -48,15 +67,31 @@ void StartShutdownProcess(UINT countdown) {
         return;
     }
     g_is_shutdown_pending = TRUE;
+
+    WCHAR args[32];
+    swprintf_s(args, ARRAYSIZE(args), L"-s -t %u", countdown);
+
+    if (!RunShutdownCommand(args)) {
+        g_is_shutdown_pending = FALSE;
+        MessageBoxW(g_hMainWindow, L"执行关机命令失败！请检查权限。", L"关机错误", MB_OK | MB_ICONERROR | MB_TOPMOST);
+        return;
+    }
+
+    // 设置本地倒计时定时器，到点后清理状态（系统侧 shutdown -t N 会自行执行关机）
     SetTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN, countdown * 1000, NULL);
-    WCHAR szMessage[256];
-    swprintf_s(szMessage, ARRAYSIZE(szMessage), L"系统将在 %d 秒后关机。请保存您的工作。", countdown);
-    MessageBoxW(g_hMainWindow, szMessage, L"关机提示", MB_OK | MB_ICONWARNING | MB_TOPMOST);
+}
+
+void CancelShutdownProcess() {
+    // 无论本地状态如何，都尝试中止系统侧倒计时（幂等）
+    RunShutdownCommand(L"-a");
+
+    KillTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN);
+    g_is_shutdown_pending = FALSE;
 }
 
 void StopShutdownCountdown() {
-    KillTimer(g_hHiddenWindow, IDT_TIMER_SHUTDOWN_COUNTDOWN);
-    g_is_shutdown_pending = FALSE;
+    // 保留原函数名，语义等同于 CancelShutdownProcess
+    CancelShutdownProcess();
 }
 
 void InitializeGetLastInputInfo() {
@@ -96,7 +131,7 @@ void SetShutdownTimers() {
     // 停止所有现有的定时器
     KillTimer(g_hHiddenWindow, IDT_TIMER_CHECK_IDLE);
     KillTimer(g_hHiddenWindow, IDT_TIMER_CHECK_TIMED_SHUTDOWN);
-    StopShutdownCountdown(); // 这将 g_is_shutdown_pending 设置为 FALSE
+    CancelShutdownProcess(); // 这将 g_is_shutdown_pending 设置为 FALSE 并中止系统侧倒计时
 
     if (g_config.enable_idle_shutdown) {
         if (g_config.idle_minutes <= 0) {
