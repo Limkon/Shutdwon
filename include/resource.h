@@ -8,6 +8,7 @@
 #define IDT_TIMER_CHECK_IDLE 2001
 #define IDT_TIMER_CHECK_TIMED_SHUTDOWN 2002
 #define IDT_TIMER_SHUTDOWN_COUNTDOWN 2003
+#define IDT_TIMER_UPDATE_STATUS 2004
 
 // GUI Control IDs
 #define IDC_CHK_AUTORUN             100
@@ -22,5 +23,13 @@
 #define IDC_BTN_SHUTDOWN_NOW        110
 #define IDC_BTN_EXIT_APP            112
 #define IDC_BTN_HIDE_PROGRAM        113
+#define IDC_CHK_SHOW_TRAY_ICON      114
+#define IDC_STATIC_STATUS           115
+
+// Tray Context Menu IDs
+#define IDM_TRAY_SHOW_MAIN          3001
+#define IDM_TRAY_SHUTDOWN_NOW       3002
+#define IDM_TRAY_CANCEL_SHUTDOWN    3003
+#define IDM_TRAY_EXIT               3004
 
 #endif // RESOURCE_H
