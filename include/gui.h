@@ -8,4 +8,7 @@ void GetConfigFromGUI();
 LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+void InitTrayIconIfConfigured();
+void CleanupTrayIcon();
+
 #endif // GUI_H
