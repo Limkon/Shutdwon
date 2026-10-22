@@ -3,7 +3,45 @@
 #include "../include/system_ops.h"
 #include "../include/gui.h"
 
+// 启用 ComCtl v6 视觉样式（按钮/编辑框现代主题绘制，边缘更平滑）
+#pragma comment(linker, "\"/manifestdependency:type='win32' \
+name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
+// 兼容老 SDK：DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 未定义时兜底
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
+
+// 启用 Per-Monitor DPI 感知（动态加载，兼容 Win7）
+static void EnableDpiAwareness(void) {
+    HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
+    if (hUser32) {
+        typedef BOOL (WINAPI *PFN_SetProcessDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
+        PFN_SetProcessDpiAwarenessContext pfnSetCtx =
+            (PFN_SetProcessDpiAwarenessContext)GetProcAddress(hUser32, "SetProcessDpiAwarenessContext");
+        if (pfnSetCtx) {
+            pfnSetCtx(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            return;
+        }
+    }
+    // 回退：Win7/8 系统级 DPI 感知
+    typedef BOOL (WINAPI *PFN_SetProcessDPIAware)(void);
+    HMODULE hUser32Load = LoadLibraryW(L"user32.dll");
+    if (hUser32Load) {
+        PFN_SetProcessDPIAware pfnSetDPIAware =
+            (PFN_SetProcessDPIAware)GetProcAddress(hUser32Load, "SetProcessDPIAware");
+        if (pfnSetDPIAware) {
+            pfnSetDPIAware();
+        }
+        FreeLibrary(hUser32Load);
+    }
+}
+
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int nCmdShow) {
+    // 启用 DPI 感知（必须在创建任何窗口之前）
+    EnableDpiAwareness();
+
     // 设置工作目录
     WCHAR exeDir[MAX_PATH];
     GetModuleFileNameW(NULL, exeDir, MAX_PATH);
@@ -116,7 +154,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
     g_hMainWindow = CreateWindowExW(
         0, MAIN_WINDOW_CLASS, L"定时闲置关机助手",
         WS_OVERLAPPEDWINDOW | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 430, 320, // 已修改：高度从 250 增加到 320，确保按钮可见
+        CW_USEDEFAULT, CW_USEDEFAULT, 430, 320, // 高度 320，确保按钮可见
         NULL, NULL, hInstance, NULL);
 
     if (!g_hMainWindow) {
