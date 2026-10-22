@@ -33,7 +33,7 @@ void SetSystemFont(HWND hwndParent) {
         // 如果系统没有微软雅黑，回退到系统消息字体（但保持 ClearType）
         if (!g_hAppFont) {
             NONCLIENTMETRICSW ncm = { sizeof(NONCLIENTMETRICSW) };
-            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS), &ncm, 0)) {
+            if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICSW), &ncm, 0)) {
                 ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
                 g_hAppFont = CreateFontIndirectW(&ncm.lfMessageFont);
             } else {
@@ -402,12 +402,15 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_CLOSE:
-            // 点关闭按钮：隐藏窗口，程序继续后台运行（定时器照常工作）
-            ShowWindow(hWnd, SW_HIDE);
-            break;
+            if (g_tray_icon_added) {
+                ShowWindow(hWnd, SW_HIDE);
+            } else {
+                ShowWindow(hWnd, SW_MINIMIZE);
+            }
+            return 0;   // 阻止 DefWindowProcW 默认 DestroyWindow，程序继续后台运行
 
         case WM_DESTROY:
-            RemoveTrayIcon();
+            // 主窗口销毁时只清理主窗口资源；托盘生命周期归隐藏窗口（程序锚点）
             KillTimer(hWnd, IDT_TIMER_UPDATE_STATUS);
             if (g_hAppFont) {
                 DeleteObject(g_hAppFont);
@@ -480,6 +483,8 @@ LRESULT CALLBACK HiddenWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPa
         case WM_QUERYENDSESSION:
             return TRUE;
         case WM_DESTROY:
+            // 程序锚点销毁：真正退出，删除托盘 + 结束消息循环
+            RemoveTrayIcon();
             PostQuitMessage(0);
             break;
     }
