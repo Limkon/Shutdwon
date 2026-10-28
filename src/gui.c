@@ -311,10 +311,6 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                         RemoveTrayIcon();
                     }
 
-                    // 更新「隐藏后台」按钮文案
-                    SetWindowTextW(GetDlgItem(hWnd, IDC_BTN_HIDE_PROGRAM),
-                                   g_config.show_tray_icon ? L"隐藏后台" : L"最小化");
-
                     SetShutdownTimers(); 
                     UpdateStatusText();
 
@@ -343,11 +339,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     UpdateStatusText();
                     break;
                 case IDC_BTN_HIDE_PROGRAM:
-                    if (g_tray_icon_added) {
-                        ShowWindow(hWnd, SW_HIDE);
-                    } else {
-                        ShowWindow(hWnd, SW_MINIMIZE);
-                    }
+                    ShowWindow(hWnd, SW_HIDE);   // 总是隐藏后台
                     break;
                 case IDC_BTN_EXIT_APP:
                     RemoveTrayIcon();
@@ -375,14 +367,13 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_TRAYICON: {
-            // 关键修复：取低 16 位，兼容 Win7 的 v0 回调格式
+            // 取低 16 位，兼容 Win7 的 v0 回调格式
             UINT uMsg = LOWORD(lParam);
             if (uMsg == WM_LBUTTONDBLCLK || uMsg == WM_LBUTTONDOWN) {
                 ShowWindow(g_hMainWindow, SW_SHOW);
                 ShowWindow(g_hMainWindow, SW_RESTORE);
                 SetForegroundWindow(g_hMainWindow);
             } else if (uMsg == WM_RBUTTONUP || uMsg == WM_CONTEXTMENU) {
-                // 补充 WM_CONTEXTMENU 兼容
                 ShowTrayContextMenu();
             }
             break;
@@ -403,11 +394,7 @@ LRESULT CALLBACK MainWindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
 
         case WM_CLOSE:
-            if (g_tray_icon_added) {
-                ShowWindow(hWnd, SW_HIDE);
-            } else {
-                ShowWindow(hWnd, SW_MINIMIZE);
-            }
+            ShowWindow(hWnd, SW_HIDE);   // 总是隐藏后台
             return 0;   // 阻止 DefWindowProcW 默认 DestroyWindow，程序继续后台运行
 
         case WM_DESTROY:
