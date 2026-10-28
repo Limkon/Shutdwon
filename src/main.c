@@ -77,6 +77,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         HWND existing_hwnd = FindWindowW(MAIN_WINDOW_CLASS, NULL);
         if (existing_hwnd) {
+            ShowWindow(existing_hwnd, SW_SHOW);
             ShowWindow(existing_hwnd, SW_RESTORE);
             SetWindowPos(existing_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             SetWindowPos(existing_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
@@ -168,9 +169,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPWSTR lpCmdLine, int 
     // 按配置初始化托盘图标（主窗口已创建，g_hMainWindow 有效）
     InitTrayIconIfConfigured();
 
-    // 按配置更新「隐藏后台」按钮文案
-    SetWindowTextW(GetDlgItem(g_hMainWindow, IDC_BTN_HIDE_PROGRAM),
-                   g_config.show_tray_icon ? L"隐藏后台" : L"最小化");
+    // ★ 移除了按配置更新按钮文案的逻辑，固定显示“隐藏后台”
 
     ApplyConfigToGUI();
     ShowWindow(g_hMainWindow, initialCmdShow);
